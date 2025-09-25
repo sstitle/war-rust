@@ -1,0 +1,9 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- This repo is managed by a Nix flake in `flake.nix`, this file provides a devShell and set of packages and apps: https://wiki.nixos.org/wiki/Flakes
+- This repo uses the 'mask' dependency from the devShell and a `maskfile.md` file which provides a quick way to add convenient scripts for the repo to a central location: https://github.com/jacobdeichert/mask
+- This repo provides `nickel` lang as a development dependency in the devShell, this can be used for generating configuration and schema files that can be exported to JSON, YAML, or TOML: https://nickel-lang.org/
