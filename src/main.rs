@@ -1,7 +1,26 @@
 mod cards;
 
 use cards::{Card, Deck, Rank, Suit};
+use clap::Parser;
 use std::io::{self, Read, Write};
+
+#[derive(Parser)]
+#[command(name = "war-rust")]
+#[command(about = "A War card game implementation in Rust")]
+#[command(version = "0.1.0")]
+struct Args {
+    /// Enable test mode (game ends after 20 rounds)
+    #[arg(short, long)]
+    test: bool,
+
+    /// Enable interactive mode (press SPACE to continue each round)
+    #[arg(short, long)]
+    interactive: bool,
+
+    /// Show a guaranteed WAR scenario with banner
+    #[arg(short, long)]
+    war_demo: bool,
+}
 
 const WAR_BANNER: &str = r#"
   _____                  ____        _____
@@ -62,9 +81,10 @@ impl WarGame {
 
     fn log_card_draw(&self, player: usize, card: Card) {
         println!(
-            "🃏 Player {} draws: {:?} (value: {})",
+            "🃏 Player {} draws: {}{:?} (value: {})",
             player,
-            card,
+            card.suit_symbol(),
+            card.rank,
             card.value()
         );
     }
@@ -116,8 +136,18 @@ impl WarGame {
         battle_cards.push(card1);
         battle_cards.push(card2);
 
-        println!("Player 1 plays: {:?} (value: {})", card1, card1.value());
-        println!("Player 2 plays: {:?} (value: {})", card2, card2.value());
+        println!(
+            "Player 1 plays: {}{:?} (value: {})",
+            card1.suit_symbol(),
+            card1.rank,
+            card1.value()
+        );
+        println!(
+            "Player 2 plays: {}{:?} (value: {})",
+            card2.suit_symbol(),
+            card2.rank,
+            card2.value()
+        );
 
         if card1.value() > card2.value() {
             println!("Player 1 wins the round!");
@@ -135,7 +165,12 @@ impl WarGame {
                 if let Some(burn1) = self.draw_card(1) {
                     self.log_card_draw(1, burn1);
                     battle_cards.push(burn1);
-                    println!("Player 1 burns card {}: {:?}", i, burn1);
+                    println!(
+                        "Player 1 burns card {}: {}{:?}",
+                        i,
+                        burn1.suit_symbol(),
+                        burn1.rank
+                    );
                 } else {
                     println!("Player 1 runs out of cards during war!");
                     return Some(2);
@@ -144,7 +179,12 @@ impl WarGame {
                 if let Some(burn2) = self.draw_card(2) {
                     self.log_card_draw(2, burn2);
                     battle_cards.push(burn2);
-                    println!("Player 2 burns card {}: {:?}", i, burn2);
+                    println!(
+                        "Player 2 burns card {}: {}{:?}",
+                        i,
+                        burn2.suit_symbol(),
+                        burn2.rank
+                    );
                 } else {
                     println!("Player 2 runs out of cards during war!");
                     return Some(1);
@@ -160,10 +200,12 @@ impl WarGame {
                     battle_cards.push(war_card2);
 
                     println!(
-                        "War cards - Player 1: {:?} ({}), Player 2: {:?} ({})",
-                        war_card1,
+                        "War cards - Player 1: {}{:?} ({}), Player 2: {}{:?} ({})",
+                        war_card1.suit_symbol(),
+                        war_card1.rank,
                         war_card1.value(),
-                        war_card2,
+                        war_card2.suit_symbol(),
+                        war_card2.rank,
                         war_card2.value()
                     );
 
@@ -313,16 +355,13 @@ impl WarGame {
 }
 
 fn main() {
-    // Configuration flags:
-    // test_mode: true = ends after 20 rounds, false = plays until winner
-    // interactive: true = requires SPACE key to continue each round, false = automatic
-    let test_mode = false;
-    let interactive = false;
+    let args = Args::parse();
 
-    let mut game = WarGame::new(test_mode, interactive);
+    let mut game = WarGame::new(args.test, args.interactive);
 
-    // Uncomment the line below to see a guaranteed WAR scenario with banner
-    // game.create_war_scenario();
+    if args.war_demo {
+        game.create_war_scenario();
+    }
 
     game.play();
 }

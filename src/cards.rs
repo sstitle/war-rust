@@ -36,6 +36,15 @@ impl Card {
     pub fn value(&self) -> u8 {
         self.rank as u8
     }
+
+    pub fn suit_symbol(&self) -> &'static str {
+        match self.suit {
+            Suit::Hearts => "♥",
+            Suit::Spades => "♠",
+            Suit::Clubs => "♣",
+            Suit::Diamonds => "♦",
+        }
+    }
 }
 
 #[derive(Debug)]
