@@ -1,6 +1,6 @@
 mod cards;
 
-use cards::{Card, Deck, Rank, Suit};
+use cards::{Card, Deck};
 use clap::Parser;
 use std::io::{self, Read, Write};
 
@@ -17,9 +17,9 @@ struct Args {
     #[arg(short, long)]
     interactive: bool,
 
-    /// Show a guaranteed WAR scenario with banner
+    /// Set random seed for deterministic gameplay
     #[arg(short, long)]
-    war_demo: bool,
+    seed: Option<u64>,
 }
 
 const WAR_BANNER: &str = r#"
@@ -62,6 +62,20 @@ impl WarGame {
         }
     }
 
+    fn new_with_seed(test_mode: bool, interactive: bool, seed: u64) -> Self {
+        let mut deck = Deck::new();
+        deck.shuffle_with_seed(seed);
+        let (player1_cards, player2_cards) = deck.split();
+
+        WarGame {
+            player1_cards,
+            player2_cards,
+            round: 0,
+            test_mode,
+            interactive,
+        }
+    }
+
     fn wait_for_space(&self) {
         if self.interactive {
             print!("Press SPACE to continue...");
@@ -81,7 +95,7 @@ impl WarGame {
 
     fn log_card_draw(&self, player: usize, card: Card) {
         println!(
-            "🃏 Player {} draws: {}{:?} (value: {})",
+            "🃏 Player {} draws: {} {:?} (value: {})",
             player,
             card.suit_symbol(),
             card.rank,
@@ -137,13 +151,13 @@ impl WarGame {
         battle_cards.push(card2);
 
         println!(
-            "Player 1 plays: {}{:?} (value: {})",
+            "Player 1 plays: {} {:?} (value: {})",
             card1.suit_symbol(),
             card1.rank,
             card1.value()
         );
         println!(
-            "Player 2 plays: {}{:?} (value: {})",
+            "Player 2 plays: {} {:?} (value: {})",
             card2.suit_symbol(),
             card2.rank,
             card2.value()
@@ -166,7 +180,7 @@ impl WarGame {
                     self.log_card_draw(1, burn1);
                     battle_cards.push(burn1);
                     println!(
-                        "Player 1 burns card {}: {}{:?}",
+                        "Player 1 burns card {}: {} {:?}",
                         i,
                         burn1.suit_symbol(),
                         burn1.rank
@@ -180,7 +194,7 @@ impl WarGame {
                     self.log_card_draw(2, burn2);
                     battle_cards.push(burn2);
                     println!(
-                        "Player 2 burns card {}: {}{:?}",
+                        "Player 2 burns card {}: {} {:?}",
                         i,
                         burn2.suit_symbol(),
                         burn2.rank
@@ -200,7 +214,7 @@ impl WarGame {
                     battle_cards.push(war_card2);
 
                     println!(
-                        "War cards - Player 1: {}{:?} ({}), Player 2: {}{:?} ({})",
+                        "War cards - Player 1: {} {:?} ({}), Player 2: {} {:?} ({})",
                         war_card1.suit_symbol(),
                         war_card1.rank,
                         war_card1.value(),
@@ -247,7 +261,7 @@ impl WarGame {
         }
         println!();
 
-        let max_rounds = if self.test_mode { 20 } else { 10000 };
+        let max_rounds: usize = if self.test_mode { 20 } else { 10000 };
 
         loop {
             if let Some(winner) = self.play_round() {
@@ -295,73 +309,17 @@ impl WarGame {
             }
         }
     }
-
-    fn create_war_scenario(&mut self) {
-        println!("🎮 Creating WAR scenario for demonstration...");
-
-        // Create a controlled scenario where both players have the same rank
-        let war_card1 = Card {
-            suit: Suit::Hearts,
-            rank: Rank::King,
-        };
-        let war_card2 = Card {
-            suit: Suit::Spades,
-            rank: Rank::King,
-        };
-
-        // Set up cards so the first draw will be a war
-        self.player1_cards = vec![
-            Card {
-                suit: Suit::Hearts,
-                rank: Rank::Ace,
-            }, // War deciding card
-            Card {
-                suit: Suit::Diamonds,
-                rank: Rank::Four,
-            }, // Burn card 3
-            Card {
-                suit: Suit::Clubs,
-                rank: Rank::Three,
-            }, // Burn card 2
-            Card {
-                suit: Suit::Spades,
-                rank: Rank::Two,
-            }, // Burn card 1
-            war_card1, // Initial war card
-        ];
-
-        self.player2_cards = vec![
-            Card {
-                suit: Suit::Clubs,
-                rank: Rank::Eight,
-            }, // War deciding card
-            Card {
-                suit: Suit::Hearts,
-                rank: Rank::Seven,
-            }, // Burn card 3
-            Card {
-                suit: Suit::Spades,
-                rank: Rank::Six,
-            }, // Burn card 2
-            Card {
-                suit: Suit::Diamonds,
-                rank: Rank::Five,
-            }, // Burn card 1
-            war_card2, // Initial war card
-        ];
-
-        self.round = 0;
-    }
 }
 
 fn main() {
     let args = Args::parse();
 
-    let mut game = WarGame::new(args.test, args.interactive);
-
-    if args.war_demo {
-        game.create_war_scenario();
-    }
+    let mut game = if let Some(seed) = args.seed {
+        println!("🎲 Using seed: {}", seed);
+        WarGame::new_with_seed(args.test, args.interactive, seed)
+    } else {
+        WarGame::new(args.test, args.interactive)
+    };
 
     game.play();
 }

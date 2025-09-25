@@ -1,5 +1,6 @@
-use rand::rng;
+use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
+use rand::{SeedableRng, rng};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Suit {
@@ -89,6 +90,11 @@ impl Deck {
 
     pub fn shuffle(&mut self) {
         let mut rng = rng();
+        self.cards.shuffle(&mut rng);
+    }
+
+    pub fn shuffle_with_seed(&mut self, seed: u64) {
+        let mut rng = StdRng::seed_from_u64(seed);
         self.cards.shuffle(&mut rng);
     }
 
