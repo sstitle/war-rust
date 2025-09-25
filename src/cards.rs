@@ -1,3 +1,4 @@
+use crate::ring_buffer::RingBuffer;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::{SeedableRng, rng};
@@ -98,18 +99,62 @@ impl Deck {
         self.cards.shuffle(&mut rng);
     }
 
-    pub fn split(self) -> (Vec<Card>, Vec<Card>) {
-        let mut player1 = Vec::new();
-        let mut player2 = Vec::new();
+    pub fn split(self) -> (PlayerHand, PlayerHand) {
+        let mut player1 = PlayerHand::new();
+        let mut player2 = PlayerHand::new();
 
         for (i, card) in self.cards.iter().enumerate() {
             if i % 2 == 0 {
-                player1.push(*card);
+                player1.add_card(*card);
             } else {
-                player2.push(*card);
+                player2.add_card(*card);
             }
         }
 
         (player1, player2)
+    }
+}
+
+/// A player's hand using a ring buffer for efficient card management
+#[derive(Debug)]
+pub struct PlayerHand {
+    cards: RingBuffer<Card, 52>,
+}
+
+impl PlayerHand {
+    pub fn new() -> Self {
+        Self {
+            cards: RingBuffer::new(Card {
+                suit: Suit::Hearts,
+                rank: Rank::Two,
+            }),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.cards.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cards.is_empty()
+    }
+
+    /// Draw a card from the back of the hand (like drawing from a deck)
+    pub fn draw_card(&mut self) -> Option<Card> {
+        self.cards.pop_back()
+    }
+
+    /// Add a single card to the back of the hand
+    pub fn add_card(&mut self, card: Card) {
+        self.cards.push_back(card);
+    }
+
+    /// Transfer all cards from a battle buffer directly to the front of this hand
+    /// This avoids creating any temporary Vec allocations
+    pub fn take_battle_cards(&mut self, battle_buffer: &RingBuffer<Card, 52>) {
+        // Add all cards from the battle buffer to the front of this hand
+        for card in battle_buffer.iter() {
+            self.cards.push_front(card);
+        }
     }
 }

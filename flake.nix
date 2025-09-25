@@ -42,6 +42,11 @@
               rustc
               cargo
               rustfmt
+              rust-analyzer
+
+              # Nix tools
+              nil
+              nixd
             ];
 
             shellHook = ''

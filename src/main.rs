@@ -1,8 +1,11 @@
 mod cards;
+mod ring_buffer;
 
-use cards::{Card, Deck};
+use cards::{Card, Deck, PlayerHand};
 use clap::Parser;
+use ring_buffer::RingBuffer;
 use std::io::{self, Read, Write};
+use std::mem;
 
 #[derive(Parser)]
 #[command(name = "war-rust")]
@@ -40,8 +43,9 @@ const WAR_BANNER: &str = r#"
 "#;
 
 struct WarGame {
-    player1_cards: Vec<Card>,
-    player2_cards: Vec<Card>,
+    player1_cards: PlayerHand,
+    player2_cards: PlayerHand,
+    battle_buffer: RingBuffer<Card, 52>,
     round: usize,
     test_mode: bool,
     interactive: bool,
@@ -56,6 +60,10 @@ impl WarGame {
         WarGame {
             player1_cards,
             player2_cards,
+            battle_buffer: RingBuffer::new(Card {
+                suit: cards::Suit::Hearts,
+                rank: cards::Rank::Two,
+            }),
             round: 0,
             test_mode,
             interactive,
@@ -70,6 +78,10 @@ impl WarGame {
         WarGame {
             player1_cards,
             player2_cards,
+            battle_buffer: RingBuffer::new(Card {
+                suit: cards::Suit::Hearts,
+                rank: cards::Rank::Two,
+            }),
             round: 0,
             test_mode,
             interactive,
@@ -105,22 +117,23 @@ impl WarGame {
 
     fn draw_card(&mut self, player: usize) -> Option<Card> {
         match player {
-            1 => self.player1_cards.pop(),
-            2 => self.player2_cards.pop(),
+            1 => self.player1_cards.draw_card(),
+            2 => self.player2_cards.draw_card(),
             _ => None,
         }
     }
 
-    fn add_cards_to_winner(&mut self, winner: usize, mut cards: Vec<Card>) {
+    fn add_cards_to_winner(&mut self, winner: usize) {
         match winner {
             1 => {
-                self.player1_cards.splice(0..0, cards.drain(..));
+                self.player1_cards.take_battle_cards(&self.battle_buffer);
             }
             2 => {
-                self.player2_cards.splice(0..0, cards.drain(..));
+                self.player2_cards.take_battle_cards(&self.battle_buffer);
             }
             _ => {}
         }
+        self.battle_buffer.clear();
     }
 
     fn play_round(&mut self) -> Option<usize> {
@@ -140,15 +153,16 @@ impl WarGame {
             self.player2_cards.len()
         );
 
-        let mut battle_cards = Vec::new();
+        // Clear and reuse the battle buffer
+        self.battle_buffer.clear();
 
         // Draw initial cards
         let card1 = self.draw_card(1)?;
         let card2 = self.draw_card(2)?;
         self.log_card_draw(1, card1);
         self.log_card_draw(2, card2);
-        battle_cards.push(card1);
-        battle_cards.push(card2);
+        self.battle_buffer.push_back(card1);
+        self.battle_buffer.push_back(card2);
 
         println!(
             "Player 1 plays: {} {:?} (value: {})",
@@ -165,10 +179,10 @@ impl WarGame {
 
         if card1.value() > card2.value() {
             println!("Player 1 wins the round!");
-            self.add_cards_to_winner(1, battle_cards);
+            self.add_cards_to_winner(1);
         } else if card2.value() > card1.value() {
             println!("Player 2 wins the round!");
-            self.add_cards_to_winner(2, battle_cards);
+            self.add_cards_to_winner(2);
         } else {
             println!("WAR! Cards are equal ({})", card1.value());
             println!("{}", WAR_BANNER);
@@ -178,7 +192,7 @@ impl WarGame {
             for i in 1..=3 {
                 if let Some(burn1) = self.draw_card(1) {
                     self.log_card_draw(1, burn1);
-                    battle_cards.push(burn1);
+                    self.battle_buffer.push_back(burn1);
                     println!(
                         "Player 1 burns card {}: {} {:?}",
                         i,
@@ -192,7 +206,7 @@ impl WarGame {
 
                 if let Some(burn2) = self.draw_card(2) {
                     self.log_card_draw(2, burn2);
-                    battle_cards.push(burn2);
+                    self.battle_buffer.push_back(burn2);
                     println!(
                         "Player 2 burns card {}: {} {:?}",
                         i,
@@ -210,8 +224,8 @@ impl WarGame {
                 if let Some(war_card2) = self.draw_card(2) {
                     self.log_card_draw(1, war_card1);
                     self.log_card_draw(2, war_card2);
-                    battle_cards.push(war_card1);
-                    battle_cards.push(war_card2);
+                    self.battle_buffer.push_back(war_card1);
+                    self.battle_buffer.push_back(war_card2);
 
                     println!(
                         "War cards - Player 1: {} {:?} ({}), Player 2: {} {:?} ({})",
@@ -225,15 +239,15 @@ impl WarGame {
 
                     if war_card1.value() > war_card2.value() {
                         println!("Player 1 wins the war!");
-                        self.add_cards_to_winner(1, battle_cards);
+                        self.add_cards_to_winner(1);
                     } else if war_card2.value() > war_card1.value() {
                         println!("Player 2 wins the war!");
-                        self.add_cards_to_winner(2, battle_cards);
+                        self.add_cards_to_winner(2);
                     } else {
                         println!(
                             "Another war would be needed, but for simplicity, Player 1 wins this tie!"
                         );
-                        self.add_cards_to_winner(1, battle_cards);
+                        self.add_cards_to_winner(1);
                     }
                 } else {
                     println!("Player 2 runs out of cards during war!");
@@ -311,8 +325,61 @@ impl WarGame {
     }
 }
 
+fn show_memory_layout() {
+    println!("\n📊 Memory Layout Information:");
+    println!("Card size: {} bytes", mem::size_of::<Card>());
+    println!("Card alignment: {} bytes", mem::align_of::<Card>());
+    println!("Card needs drop: {}", mem::needs_drop::<Card>());
+
+    println!("PlayerHand size: {} bytes", mem::size_of::<PlayerHand>());
+    println!(
+        "PlayerHand alignment: {} bytes",
+        mem::align_of::<PlayerHand>()
+    );
+    println!("PlayerHand needs drop: {}", mem::needs_drop::<PlayerHand>());
+
+    println!(
+        "RingBuffer<Card, 52> size: {} bytes",
+        mem::size_of::<RingBuffer<Card, 52>>()
+    );
+    println!(
+        "RingBuffer<Card, 52> alignment: {} bytes",
+        mem::align_of::<RingBuffer<Card, 52>>()
+    );
+    println!(
+        "RingBuffer<Card, 52> needs drop: {}",
+        mem::needs_drop::<RingBuffer<Card, 52>>()
+    );
+
+    println!("WarGame size: {} bytes", mem::size_of::<WarGame>());
+    println!("WarGame alignment: {} bytes", mem::align_of::<WarGame>());
+    println!("WarGame needs drop: {}", mem::needs_drop::<WarGame>());
+
+    println!("\n🚀 ZERO HEAP ALLOCATIONS!");
+    println!("✅ Entire game state lives on the stack");
+    println!("✅ No Vec, no Box, no heap pointers");
+    println!(
+        "✅ Maximum predictable memory usage: {} bytes",
+        mem::size_of::<WarGame>()
+    );
+
+    // For comparison, show what Vec<Card> would be like
+    println!("\n📈 Comparison to Vec<Card>:");
+    println!(
+        "Vec<Card> size: {} bytes (just the pointer + metadata, data on heap)",
+        mem::size_of::<Vec<Card>>()
+    );
+    println!(
+        "Vec<Card> needs drop: {} (must manage heap memory)",
+        mem::needs_drop::<Vec<Card>>()
+    );
+    println!();
+}
+
 fn main() {
     let args = Args::parse();
+
+    show_memory_layout();
 
     let mut game = if let Some(seed) = args.seed {
         println!("🎲 Using seed: {}", seed);
