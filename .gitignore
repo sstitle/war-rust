@@ -1,3 +1,8 @@
 result*
 .direnv/
 scratchpad.md
+
+
+# Added by cargo
+
+/target
