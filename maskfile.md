@@ -2,10 +2,24 @@
 
 This is a [mask](https://github.com/jacobdeichert/mask) task runner file.
 
-## hello
+## benchmark
 
-> This is an example command you can run with `mask hello`
+> Run benchmarks
 
 ```bash
-echo "Hello World!"
+cargo bench --color=always
+
+echo ""
+echo "✅ Benchmark complete! Check target/criterion/report/index.html for detailed reports"
+```
+
+## test
+
+> Run tests
+
+```bash
+cargo test --color=always
+
+echo ""
+echo "✅ Tests complete!"
 ```

@@ -4,14 +4,16 @@ use rand::seq::SliceRandom;
 use rand::{SeedableRng, rng};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[repr(u8)]
 pub enum Suit {
-    Hearts,
-    Spades,
-    Clubs,
-    Diamonds,
+    Hearts = 0,
+    Spades = 1,
+    Clubs = 2,
+    Diamonds = 3,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord)]
+#[repr(u8)]
 pub enum Rank {
     Two = 2,
     Three = 3,
@@ -28,19 +30,61 @@ pub enum Rank {
     Ace = 14,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct Card {
-    pub suit: Suit,
-    pub rank: Rank,
-}
+/// Ultra-compact card representation: 1 byte total
+/// Bits 0-1: Suit (4 suits = 2 bits)
+/// Bits 2-7: Rank (13 ranks, values 2-14 = 6 bits)
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[repr(transparent)]
+pub struct Card(u8);
 
 impl Card {
-    pub fn value(&self) -> u8 {
-        self.rank as u8
+    /// Create a new card from suit and rank
+    pub fn new(suit: Suit, rank: Rank) -> Self {
+        let suit_bits = (suit as u8) & 0b11; // 2 bits for suit
+        let rank_bits = (rank as u8) & 0b111111; // 6 bits for rank
+        Card((rank_bits << 2) | suit_bits)
     }
 
+    /// Extract the suit from the packed representation
+    pub fn suit(&self) -> Suit {
+        match self.0 & 0b11 {
+            0 => Suit::Hearts,
+            1 => Suit::Spades,
+            2 => Suit::Clubs,
+            3 => Suit::Diamonds,
+            _ => unreachable!(), // Only 2 bits, can't exceed 3
+        }
+    }
+
+    /// Extract the rank from the packed representation
+    pub fn rank(&self) -> Rank {
+        let rank_value = (self.0 >> 2) & 0b111111;
+        match rank_value {
+            2 => Rank::Two,
+            3 => Rank::Three,
+            4 => Rank::Four,
+            5 => Rank::Five,
+            6 => Rank::Six,
+            7 => Rank::Seven,
+            8 => Rank::Eight,
+            9 => Rank::Nine,
+            10 => Rank::Ten,
+            11 => Rank::Jack,
+            12 => Rank::Queen,
+            13 => Rank::King,
+            14 => Rank::Ace,
+            _ => unreachable!(), // Only valid rank values
+        }
+    }
+
+    /// Get the numeric value of the card for comparison
+    pub fn value(&self) -> u8 {
+        (self.0 >> 2) & 0b111111
+    }
+
+    /// Get the suit symbol for display
     pub fn suit_symbol(&self) -> &'static str {
-        match self.suit {
+        match self.suit() {
             Suit::Hearts => "♥",
             Suit::Spades => "♠",
             Suit::Clubs => "♣",
@@ -73,15 +117,12 @@ impl Deck {
             Rank::Ace,
         ];
 
-        let mut cards = [Card {
-            suit: Suit::Hearts,
-            rank: Rank::Two,
-        }; 52];
+        let mut cards = [Card::new(Suit::Hearts, Rank::Two); 52];
         let mut index = 0;
 
         for &suit in &suits {
             for &rank in &ranks {
-                cards[index] = Card { suit, rank };
+                cards[index] = Card::new(suit, rank);
                 index += 1;
             }
         }
@@ -124,10 +165,7 @@ pub struct PlayerHand {
 impl PlayerHand {
     pub fn new() -> Self {
         Self {
-            cards: RingBuffer::new(Card {
-                suit: Suit::Hearts,
-                rank: Rank::Two,
-            }),
+            cards: RingBuffer::new(Card::new(Suit::Hearts, Rank::Two)),
         }
     }
 

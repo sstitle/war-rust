@@ -1,11 +1,43 @@
-mod cards;
-mod ring_buffer;
+pub mod cards;
+pub mod ring_buffer;
 
 use cards::{Card, Deck, PlayerHand};
 use clap::Parser;
 use ring_buffer::RingBuffer;
+use std::fmt;
 use std::io::{self, Read, Write};
 use std::mem;
+
+#[derive(Debug)]
+pub enum GameError {
+    PlayerOutOfCards(usize),
+    InvalidPlayerNumber(usize),
+    BattleBufferFull,
+    IoError(io::Error),
+}
+
+impl fmt::Display for GameError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GameError::PlayerOutOfCards(player) => write!(f, "Player {} is out of cards", player),
+            GameError::InvalidPlayerNumber(player) => {
+                write!(f, "Invalid player number: {}", player)
+            }
+            GameError::BattleBufferFull => write!(f, "Battle buffer is full - cannot continue war"),
+            GameError::IoError(e) => write!(f, "I/O error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for GameError {}
+
+impl From<io::Error> for GameError {
+    fn from(error: io::Error) -> Self {
+        GameError::IoError(error)
+    }
+}
+
+type GameResult<T> = Result<T, GameError>;
 
 #[derive(Parser)]
 #[command(name = "war-rust")]
@@ -60,10 +92,7 @@ impl WarGame {
         WarGame {
             player1_cards,
             player2_cards,
-            battle_buffer: RingBuffer::new(Card {
-                suit: cards::Suit::Hearts,
-                rank: cards::Rank::Two,
-            }),
+            battle_buffer: RingBuffer::new(Card::new(cards::Suit::Hearts, cards::Rank::Two)),
             round: 0,
             test_mode,
             interactive,
@@ -78,31 +107,32 @@ impl WarGame {
         WarGame {
             player1_cards,
             player2_cards,
-            battle_buffer: RingBuffer::new(Card {
-                suit: cards::Suit::Hearts,
-                rank: cards::Rank::Two,
-            }),
+            battle_buffer: RingBuffer::new(Card::new(cards::Suit::Hearts, cards::Rank::Two)),
             round: 0,
             test_mode,
             interactive,
         }
     }
 
-    fn wait_for_space(&self) {
+    fn wait_for_space(&self) -> GameResult<()> {
         if self.interactive {
             print!("Press SPACE to continue...");
-            io::stdout().flush().unwrap();
+            io::stdout().flush()?;
 
             let mut buffer = [0; 1];
             loop {
-                if io::stdin().read_exact(&mut buffer).is_ok() {
-                    if buffer[0] == b' ' {
-                        break;
+                match io::stdin().read_exact(&mut buffer) {
+                    Ok(_) => {
+                        if buffer[0] == b' ' {
+                            break;
+                        }
                     }
+                    Err(e) => return Err(GameError::IoError(e)),
                 }
             }
             println!(); // New line after space is pressed
         }
+        Ok(())
     }
 
     fn log_card_draw(&self, player: usize, card: Card) {
@@ -110,20 +140,20 @@ impl WarGame {
             "🃏 Player {} draws: {} {:?} (value: {})",
             player,
             card.suit_symbol(),
-            card.rank,
+            card.rank(),
             card.value()
         );
     }
 
-    fn draw_card(&mut self, player: usize) -> Option<Card> {
+    fn draw_card(&mut self, player: usize) -> GameResult<Option<Card>> {
         match player {
-            1 => self.player1_cards.draw_card(),
-            2 => self.player2_cards.draw_card(),
-            _ => None,
+            1 => Ok(self.player1_cards.draw_card()),
+            2 => Ok(self.player2_cards.draw_card()),
+            _ => Err(GameError::InvalidPlayerNumber(player)),
         }
     }
 
-    fn add_cards_to_winner(&mut self, winner: usize) {
+    fn add_cards_to_winner(&mut self, winner: usize) -> GameResult<()> {
         match winner {
             1 => {
                 self.player1_cards.take_battle_cards(&self.battle_buffer);
@@ -131,19 +161,20 @@ impl WarGame {
             2 => {
                 self.player2_cards.take_battle_cards(&self.battle_buffer);
             }
-            _ => {}
+            _ => return Err(GameError::InvalidPlayerNumber(winner)),
         }
         self.battle_buffer.clear();
+        Ok(())
     }
 
-    fn play_round(&mut self) -> Option<usize> {
+    fn play_round(&mut self) -> GameResult<Option<usize>> {
         self.round += 1;
 
         if self.player1_cards.is_empty() {
-            return Some(2);
+            return Ok(Some(2));
         }
         if self.player2_cards.is_empty() {
-            return Some(1);
+            return Ok(Some(1));
         }
 
         println!("\n--- Round {} ---", self.round);
@@ -157,8 +188,8 @@ impl WarGame {
         self.battle_buffer.clear();
 
         // Draw initial cards
-        let card1 = self.draw_card(1)?;
-        let card2 = self.draw_card(2)?;
+        let card1 = self.draw_card(1)?.ok_or(GameError::PlayerOutOfCards(1))?;
+        let card2 = self.draw_card(2)?.ok_or(GameError::PlayerOutOfCards(2))?;
         self.log_card_draw(1, card1);
         self.log_card_draw(2, card2);
         self.battle_buffer.push_back(card1);
@@ -167,61 +198,61 @@ impl WarGame {
         println!(
             "Player 1 plays: {} {:?} (value: {})",
             card1.suit_symbol(),
-            card1.rank,
+            card1.rank(),
             card1.value()
         );
         println!(
             "Player 2 plays: {} {:?} (value: {})",
             card2.suit_symbol(),
-            card2.rank,
+            card2.rank(),
             card2.value()
         );
 
         if card1.value() > card2.value() {
             println!("Player 1 wins the round!");
-            self.add_cards_to_winner(1);
+            self.add_cards_to_winner(1)?;
         } else if card2.value() > card1.value() {
             println!("Player 2 wins the round!");
-            self.add_cards_to_winner(2);
+            self.add_cards_to_winner(2)?;
         } else {
             println!("WAR! Cards are equal ({})", card1.value());
             println!("{}", WAR_BANNER);
-            self.wait_for_space();
+            self.wait_for_space()?;
 
             // War scenario - burn 3 cards each and draw another
             for i in 1..=3 {
-                if let Some(burn1) = self.draw_card(1) {
+                if let Some(burn1) = self.draw_card(1)? {
                     self.log_card_draw(1, burn1);
                     self.battle_buffer.push_back(burn1);
                     println!(
                         "Player 1 burns card {}: {} {:?}",
                         i,
                         burn1.suit_symbol(),
-                        burn1.rank
+                        burn1.rank()
                     );
                 } else {
                     println!("Player 1 runs out of cards during war!");
-                    return Some(2);
+                    return Ok(Some(2));
                 }
 
-                if let Some(burn2) = self.draw_card(2) {
+                if let Some(burn2) = self.draw_card(2)? {
                     self.log_card_draw(2, burn2);
                     self.battle_buffer.push_back(burn2);
                     println!(
                         "Player 2 burns card {}: {} {:?}",
                         i,
                         burn2.suit_symbol(),
-                        burn2.rank
+                        burn2.rank()
                     );
                 } else {
                     println!("Player 2 runs out of cards during war!");
-                    return Some(1);
+                    return Ok(Some(1));
                 }
             }
 
             // Draw the deciding cards
-            if let Some(war_card1) = self.draw_card(1) {
-                if let Some(war_card2) = self.draw_card(2) {
+            if let Some(war_card1) = self.draw_card(1)? {
+                if let Some(war_card2) = self.draw_card(2)? {
                     self.log_card_draw(1, war_card1);
                     self.log_card_draw(2, war_card2);
                     self.battle_buffer.push_back(war_card1);
@@ -230,40 +261,40 @@ impl WarGame {
                     println!(
                         "War cards - Player 1: {} {:?} ({}), Player 2: {} {:?} ({})",
                         war_card1.suit_symbol(),
-                        war_card1.rank,
+                        war_card1.rank(),
                         war_card1.value(),
                         war_card2.suit_symbol(),
-                        war_card2.rank,
+                        war_card2.rank(),
                         war_card2.value()
                     );
 
                     if war_card1.value() > war_card2.value() {
                         println!("Player 1 wins the war!");
-                        self.add_cards_to_winner(1);
+                        self.add_cards_to_winner(1)?;
                     } else if war_card2.value() > war_card1.value() {
                         println!("Player 2 wins the war!");
-                        self.add_cards_to_winner(2);
+                        self.add_cards_to_winner(2)?;
                     } else {
                         println!(
                             "Another war would be needed, but for simplicity, Player 1 wins this tie!"
                         );
-                        self.add_cards_to_winner(1);
+                        self.add_cards_to_winner(1)?;
                     }
                 } else {
                     println!("Player 2 runs out of cards during war!");
-                    return Some(1);
+                    return Ok(Some(1));
                 }
             } else {
                 println!("Player 1 runs out of cards during war!");
-                return Some(2);
+                return Ok(Some(2));
             }
         }
 
-        self.wait_for_space();
-        None // Game continues
+        self.wait_for_space()?;
+        Ok(None) // Game continues
     }
 
-    fn play(&mut self) {
+    fn play(&mut self) -> GameResult<()> {
         println!("🎮 Starting War Card Game!");
         println!("Each player starts with 26 cards.");
 
@@ -278,18 +309,21 @@ impl WarGame {
         let max_rounds: usize = if self.test_mode { 20 } else { 10000 };
 
         loop {
-            if let Some(winner) = self.play_round() {
-                println!("\n🎉 GAME OVER! 🎉");
-                println!(
-                    "Player {} wins the game after {} rounds!",
-                    winner, self.round
-                );
-                println!(
-                    "Final card counts - Player 1: {}, Player 2: {}",
-                    self.player1_cards.len(),
-                    self.player2_cards.len()
-                );
-                break;
+            match self.play_round()? {
+                Some(winner) => {
+                    println!("\n🎉 GAME OVER! 🎉");
+                    println!(
+                        "Player {} wins the game after {} rounds!",
+                        winner, self.round
+                    );
+                    println!(
+                        "Final card counts - Player 1: {}, Player 2: {}",
+                        self.player1_cards.len(),
+                        self.player2_cards.len()
+                    );
+                    break;
+                }
+                None => {} // Game continues
             }
 
             // Check if we've reached the limit
@@ -322,6 +356,7 @@ impl WarGame {
                 break;
             }
         }
+        Ok(())
     }
 }
 
@@ -388,5 +423,8 @@ fn main() {
         WarGame::new(args.test, args.interactive)
     };
 
-    game.play();
+    if let Err(e) = game.play() {
+        eprintln!("❌ Game error: {}", e);
+        std::process::exit(1);
+    }
 }

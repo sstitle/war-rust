@@ -9,6 +9,7 @@ pub struct RingBuffer<T: Copy, const N: usize> {
 }
 
 impl<T: Copy, const N: usize> RingBuffer<T, N> {
+    #[allow(dead_code)]
     /// Create a new empty ring buffer with a default value for initialization
     pub fn new(default_value: T) -> Self {
         Self {
@@ -35,6 +36,7 @@ impl<T: Copy, const N: usize> RingBuffer<T, N> {
     }
 
     /// Returns the maximum capacity of the buffer
+    #[allow(dead_code)]
     pub fn capacity(&self) -> usize {
         N
     }
@@ -54,6 +56,7 @@ impl<T: Copy, const N: usize> RingBuffer<T, N> {
 
     /// Pop an element from the front of the buffer
     /// Returns Some(T) if successful, None if buffer is empty
+    #[allow(dead_code)]
     pub fn pop_front(&mut self) -> Option<T> {
         if self.is_empty() {
             return None;
@@ -94,6 +97,7 @@ impl<T: Copy, const N: usize> RingBuffer<T, N> {
     /// Add multiple items to the front of the buffer (useful for winning cards in War)
     /// Items are added in reverse order so the first item in the slice becomes the front
     /// Returns the number of items successfully added
+    #[allow(dead_code)]
     pub fn push_front_multiple(&mut self, items: &[T]) -> usize {
         let mut added = 0;
         for &item in items.iter().rev() {
@@ -108,6 +112,7 @@ impl<T: Copy, const N: usize> RingBuffer<T, N> {
 
     /// Add multiple items to the back of the buffer
     /// Returns the number of items successfully added
+    #[allow(dead_code)]
     pub fn push_back_multiple(&mut self, items: &[T]) -> usize {
         let mut added = 0;
         for &item in items.iter() {
@@ -121,6 +126,7 @@ impl<T: Copy, const N: usize> RingBuffer<T, N> {
     }
 
     /// Peek at the front element without removing it
+    #[allow(dead_code)]
     pub fn front(&self) -> Option<T> {
         if self.is_empty() {
             None
@@ -130,6 +136,7 @@ impl<T: Copy, const N: usize> RingBuffer<T, N> {
     }
 
     /// Peek at the back element without removing it
+    #[allow(dead_code)]
     pub fn back(&self) -> Option<T> {
         if self.is_empty() {
             None
@@ -262,5 +269,123 @@ mod tests {
         assert_eq!(rb.pop_front(), Some(10));
         assert_eq!(rb.pop_front(), Some(20));
         assert_eq!(rb.pop_front(), Some(1));
+    }
+
+    #[test]
+    fn test_capacity() {
+        let rb = RingBuffer::<i32, 10>::new(0);
+        assert_eq!(rb.capacity(), 10);
+        assert_eq!(rb.len(), 0);
+
+        let rb2 = RingBuffer::<i32, 5>::new(0);
+        assert_eq!(rb2.capacity(), 5);
+    }
+
+    #[test]
+    fn test_pop_front() {
+        let mut rb = RingBuffer::<i32, 4>::new(0);
+
+        // Test empty
+        assert_eq!(rb.pop_front(), None);
+
+        // Add some items and pop from front
+        assert!(rb.push_back(10));
+        assert!(rb.push_back(20));
+        assert!(rb.push_back(30));
+
+        assert_eq!(rb.pop_front(), Some(10));
+        assert_eq!(rb.pop_front(), Some(20));
+        assert_eq!(rb.len(), 1);
+        assert_eq!(rb.pop_front(), Some(30));
+        assert_eq!(rb.pop_front(), None);
+    }
+
+    #[test]
+    fn test_push_front_multiple() {
+        let mut rb = RingBuffer::<i32, 10>::new(0);
+
+        // Add some initial items
+        assert!(rb.push_back(1));
+        assert!(rb.push_back(2));
+
+        // Add multiple items to front
+        let items = [10, 20, 30];
+        assert_eq!(rb.push_front_multiple(&items), 3);
+        assert_eq!(rb.len(), 5);
+
+        // Should be: [10, 20, 30, 1, 2] when popped from front
+        // (items are reversed due to iter().rev() in push_front_multiple)
+        assert_eq!(rb.pop_front(), Some(10));
+        assert_eq!(rb.pop_front(), Some(20));
+        assert_eq!(rb.pop_front(), Some(30));
+        assert_eq!(rb.pop_front(), Some(1));
+        assert_eq!(rb.pop_front(), Some(2));
+    }
+
+    #[test]
+    fn test_push_back_multiple() {
+        let mut rb = RingBuffer::<i32, 10>::new(0);
+
+        // Add some initial items
+        assert!(rb.push_front(1));
+        assert!(rb.push_front(2));
+
+        // Add multiple items to back
+        let items = [10, 20, 30];
+        assert_eq!(rb.push_back_multiple(&items), 3);
+        assert_eq!(rb.len(), 5);
+
+        // Should be: [2, 1, 10, 20, 30] when popped from front
+        assert_eq!(rb.pop_front(), Some(2));
+        assert_eq!(rb.pop_front(), Some(1));
+        assert_eq!(rb.pop_front(), Some(10));
+        assert_eq!(rb.pop_front(), Some(20));
+        assert_eq!(rb.pop_front(), Some(30));
+    }
+
+    #[test]
+    fn test_front_and_back() {
+        let mut rb = RingBuffer::<i32, 5>::new(0);
+
+        // Test empty
+        assert_eq!(rb.front(), None);
+        assert_eq!(rb.back(), None);
+
+        // Add one item
+        assert!(rb.push_back(42));
+        assert_eq!(rb.front(), Some(42));
+        assert_eq!(rb.back(), Some(42));
+
+        // Add more items
+        assert!(rb.push_back(10));
+        assert!(rb.push_back(20));
+        assert_eq!(rb.front(), Some(42));
+        assert_eq!(rb.back(), Some(20));
+
+        // Test with push_front
+        assert!(rb.push_front(99));
+        assert_eq!(rb.front(), Some(99));
+        assert_eq!(rb.back(), Some(20));
+    }
+
+    #[test]
+    fn test_overflow_behavior() {
+        let mut rb = RingBuffer::<i32, 3>::new(0);
+
+        // Fill to capacity
+        assert_eq!(rb.push_front_multiple(&[1, 2, 3]), 3);
+        assert!(rb.is_full());
+
+        // Try to add more - should not add anything
+        assert_eq!(rb.push_front_multiple(&[4, 5]), 0);
+        assert_eq!(rb.push_back_multiple(&[6, 7]), 0);
+        assert_eq!(rb.len(), 3);
+
+        // Partial addition when there's some space
+        rb.pop_front();
+        assert_eq!(rb.len(), 2);
+        assert_eq!(rb.push_back_multiple(&[8, 9, 10]), 1); // Only one should fit
+        assert_eq!(rb.len(), 3);
+        assert!(rb.is_full());
     }
 }
